@@ -68,7 +68,7 @@ def Skeletonization_processing(folderpath: str,
     #retrieve all .tif files in processed image folder
     files = []
     filenames = []
-    for filename in os.listdir(folderpath):
+    for filename in sorted(os.listdir(folderpath)):
         if os.path.isfile(os.path.join(folderpath, filename)):
             files.append(os.path.join(folderpath,filename))
             filenames.append(filename[:-4]) #remove the .tif extension when adding to filenames
@@ -240,11 +240,14 @@ def Skeletonization_processing(folderpath: str,
         x_pts, y_pts, z_pts = [], [], []
 
         for k in range(len(skeleton)):
-            y_ind, x_ind = np.where(skeleton[k] == 1)
-            if len(x_ind) != 0:
-                x_pts.extend(x_ind)
-                y_pts.extend(y_ind)
-                z_pts.extend(np.ones(len(y_ind))*k)
+            try:
+                y_ind, x_ind = np.where(skeleton[k] == 1)
+                if len(x_ind) != 0:
+                    x_pts.extend(x_ind)
+                    y_pts.extend(y_ind)
+                    z_pts.extend(np.ones(len(y_ind))*k)
+            except ValueError:
+                print(np.where(skeleton[k] == 1))
 
         coords = np.stack((x_pts[:], y_pts[:], z_pts[:]))
         
@@ -256,15 +259,21 @@ def Skeletonization_processing(folderpath: str,
         for i in range(numfiles):
             filepath = files[i]
             filename = filenames[i]
-            arr = io.imread(filepath)
             
             pbar.set_description(f'Image {i+1}/{numfiles}')
             
-            if remove_nuclei == True:
-                arr = nuclei_removal(arr)
+            if str(filename) + '.npy' not in os.listdir(savefolder):
+                print(filename)
+                arr = io.imread(filepath)
+
+                if remove_nuclei == True:
+                    arr = nuclei_removal(arr)
+                    
+                Skeletonize(arr, filename)
+            else:
+                print("already skeletonized")
+                print(filename)
                 
-            Skeletonize(arr, filename)
-            
             pbar.update(1)
         
     return savefolder

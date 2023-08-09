@@ -47,8 +47,8 @@ class GUI1Plot(FigureCanvas):
         #intialize widgets and other stuff
         self.remove_coords_widget, self.root_coords_widget, self.start_coords_widget, self.end_coords_widget = remove_coords_widget, root_coords_widget, start_coords_widget, end_coords_widget
         self.bomb_label, self.scale_label, self.threshold_label = bomb_label, scale_label, threshold_label
-        self.scaling = np.array((1,1,1))
-        self.thresholds = np.array((1,1))
+        self.scaling = np.array((0.065,0.065,0.25))
+        self.thresholds = np.array((0.1,2))
         self.current_radius = 5
         self.ax.mouse_init() #connect mouse
         self.current_button = None #store the last clicked choice button
@@ -266,6 +266,8 @@ class GUI1Plot(FigureCanvas):
                 self.draw()
                 
     def save_results(self):
+        #TODO Fix the saving system because right now only the first one is being saved i believe -- maybe use the lists being created... bruh
+
         """
         Save the current state of the 3D plot.
 
@@ -310,11 +312,11 @@ class GUI1ApplicationWindow(QMainWindow):
         labelsizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         #create variables to store thresholds
-        self.threshold_label = QLabel("Set length and node threshold for branches (default = 1, 1")
+        self.threshold_label = QLabel("Set length and node threshold for branches (default = 0.1, 2")
         self.length_threshold = QLineEdit(self)
         self.node_threshold = QLineEdit(self)
         self.set_threshold_button = QPushButton("Set")
-        self.cur_threshold_label = QLabel("Current thresholds: [1. 1.]")
+        self.cur_threshold_label = QLabel("Current thresholds: [0.1 2.]")
         self.cur_threshold_label.setSizePolicy(labelsizePolicy)
         self.set_threshold_button.clicked.connect(lambda: self.plot_widget.set_threshold(self.length_threshold, self.node_threshold))
 
@@ -333,7 +335,7 @@ class GUI1ApplicationWindow(QMainWindow):
         self.y_scale = QLineEdit()
         self.z_scale = QLineEdit()
         self.set_scale_button = QPushButton("Set")
-        self.scale_label = QLabel("Current Scale: [1. 1. 1.]")
+        self.scale_label = QLabel("Current Scale: [0.65 0.65 0.25]")
         self.scale_label.setSizePolicy(labelsizePolicy)
         self.set_scale_button.clicked.connect(lambda: self.plot_widget.set_scale(self.x_scale, self.y_scale, self.z_scale))
 
@@ -550,6 +552,35 @@ class GUI1ApplicationWindow(QMainWindow):
         self.results_ready.emit(self.results)  # Emit the signal with the results
         self.close()
             
+from scipy.spatial import cKDTree
+import numpy as np
+
+def remove_duplicates(datafile, tol=0.1):
+    '''
+    Removes duplicates from a numpy array of 3D points.
+    
+    Parameters
+    ----------
+    datafile : np.ndarray
+        2D array with coordinates of all points.
+    tol : float
+        The tolerance for considering points as duplicates.
+
+    Returns
+    -------
+    datafile : np.ndarray
+        2D array with coordinates of all points with duplicates removed.
+    '''
+    tree = cKDTree(datafile)
+    pairs = tree.query_pairs(tol)
+    keep = np.ones((datafile.shape[0],), dtype=bool)
+
+    for i, j in pairs:
+        if keep[i] and keep[j]:
+            keep[j] = False
+
+    return datafile[keep]
+
 
 
 def GUI1(filepath: str, filename: str):
@@ -571,14 +602,19 @@ def GUI1(filepath: str, filename: str):
         dictionary will only contain the 'continue' key set to False.
     """
     
+    # datafile = np.load(filepath)ttjjT
     datafile = np.load(filepath)
+    print("OG COORDS SHAPE: ", datafile.shape)
+    all_coords = remove_duplicates(datafile, 2) #np.sqrt(2))
+    print("NEW COORDS SHAPE: ", all_coords.shape)
+        
 
     app = QApplication.instance()  # checks if QApplication already exists
     if not app:  # create QApplication if it doesnt exist 
         app = QApplication(sys.argv)
         
     window = GUI1ApplicationWindow()
-    window.plotting_data(datafile)
+    window.plotting_data(all_coords)
     window.setting_filename(filename)
 
     window.show()

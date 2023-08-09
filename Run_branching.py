@@ -11,11 +11,13 @@ import logging
 from GUIs.Useful_functions import coords_to_id, find_parent, find_length
 
 def make_tree(coords : np.ndarray, 
-              root_coords: list) -> dict:
+              root_coords: list,
+              branching_parameters : dict) -> dict:
     '''
     Builds a k-d tree for efficient nearest neighbour search, finds the k-nearest neighbours for each point and creates
-    a graph with weighted edges between each point and its neighbours. finally, computes the minimum spanning tree using 
-    those weighted edges
+    a graph with weighted edges between each point and its neighbours. Then computes the minimum spanning tree using 
+    those weighted edges. If the minimum spanning tree is not fully connected, this function will connect the disconnected
+    components by adding edges between the nearest points in each component.
     
     Parameters
     ----------
@@ -23,26 +25,55 @@ def make_tree(coords : np.ndarray,
         3d array with coordinates of all points in the skeleton
     root_coords : np.ndarray
         array of x,y,z coordinates of root node to generate tree from
+    branching_parameters : dict
+        dictionary of thresholds for branching used below
         
     Returns
     -------
     tree : dict
         returns a dictionary with every key (parent node) connected to its values (children)
-
     '''
+
     tree = KDTree(coords, copy_data=True)
-    k = 3 #2 #the number of nearest neighbors (k) to consider
-    distances, indices = tree.query(coords, k=k+1)  #query neighbours, k+1 because the point itself is included as a neighbor
+    k = branching_parameters['num_nearestneighbours'] # The number of nearest neighbors (k) to consider
+    distances, indices = tree.query(coords, k=k+1)  # Query neighbours (k+1 because the point itself is included as a neighbor)
 
     G = nx.Graph()
     for i in range(len(coords)):
         for j in range(1, k+1):  # Skip the first neighbor, which is the point itself
-            G.add_edge(i, indices[i, j], weight=distances[i, j])
+            G.add_edge(i, indices[i, j], weight=distances[i, j]) #Add weighted edge between neighbours
             
-    mst = minimum_spanning_tree(G)
+    mst = minimum_spanning_tree(G) #Construct minimum spanning tree from weights
+    
+    #Check if the minimum spanning tree is fully connected
+            
+    dist_threshold = branching_parameters['max_unconnected_distance']
+    size_threshold = branching_parameters['min_unconnected_nodes']
+    
+    if not nx.is_connected(mst):
+        components = list(nx.connected_components(mst))
+        logging.info(f"Tree is not connected. Attempting correct connection of {len(components)} tree components")
+        root_index = np.where((coords == root_coords).all(axis=1))[0][0]
+        main_component = [c for c in components if root_index in c][0]
+        other_components = [c for c in components if c != main_component]
+        for component in other_components: 
+            if len(component) > size_threshold: # Check size threshold
+                min_distance = np.inf # Initialize minimum distance with infinity
+                for node1 in main_component:
+                    for node2 in component:
+                        distance = np.linalg.norm(coords[node1] - coords[node2])
+                        if distance < min_distance:
+                            min_distance = distance
+                            min_pair = (node1, node2)
+                # Check distance threshold
+                if min_distance <= dist_threshold:
+                    # Add an edge between the pair of nodes with the smallest distance
+                    mst.add_edge(min_pair[0], min_pair[1], weight=min_distance)
+                    logging.info("Connected component")
     tree = {}
     visited = set()
 
+    
     def dfs(node):
         visited.add(node)
         neighbors = [n for n in mst.neighbors(node) if n not in visited]
@@ -56,7 +87,7 @@ def make_tree(coords : np.ndarray,
 
 def make_nodes_df(tree : dict, 
             root_coords : list, 
-            start_coords : list) -> tuple[pd.DataFrame, list, list]:
+            start_coords : list): # -> tuple[pd.DataFrame, list, list]
     '''
     Converts a tree structure to a DataFrame representation.
 
@@ -306,7 +337,7 @@ def make_branches_df(nodes_df: pd.DataFrame,
 
 
 def Run_branching(results: dict, 
-                  filepath: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+                  filepath: str): # -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Runs the branching analysis pipeline on a set of 3D coordinates. 
     

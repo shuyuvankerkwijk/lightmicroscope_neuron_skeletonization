@@ -1,13 +1,14 @@
 import numpy as np
 import logging
 import os
+import pickle
 from Run_branching import Run_branching
 from GUIs.GUI1_choosepoints import GUI1
 from GUIs.GUI2_checkbranches import GUI2
 from GUIs.GUI3_measurements import GUI3
 
 
-def Manual_processing(folderpath: str):
+def Manual_processing(folderpath: str, branching_parameters: dict):
     '''
     Processes manual input for a list of .npy files in a directory.
 
@@ -20,7 +21,9 @@ def Manual_processing(folderpath: str):
     Parameters
     ----------
     folderpath : str
-        The path to the directory containing .npy files to be processed.
+        The path to the directory containing .npy files to be processed
+    branching_parameters : dict
+        Dictionary containing thresholds for determining branching
 
     Returns
     -------
@@ -40,12 +43,12 @@ def Manual_processing(folderpath: str):
     else:
         raise RuntimeError(f'No suitable .npy files found in {folderpath}, make sure Skeletonization processing occured correctly')
     
-    
     #create directory for skeletonized coordinate files
     savefolder = os.path.join(folderpath, "RESULTS")
     if not os.path.exists(savefolder):
         os.makedirs(savefolder)
         
+    
     def UserInputCycle(filepath, filename):
         data1 = GUI1(filepath, filename)
         if data1['continue'] == True:
@@ -55,19 +58,32 @@ def Manual_processing(folderpath: str):
             scaling = data1['scaling']
 
             if len(start_coords) > 0 and len(root_coords) > 0 and len(end_coords) > 0:
-                branches, nodes_df = Run_branching(data1, filepath)
+                try:
+                    branches, nodes_df = Run_branching(data1, filepath, branching_parameters)
+                except (KeyError,ValueError,UnboundLocalError):
+                    logging.info("Branching failed. Try again. Likely there was a problematic gap in the point cloud structure between the p-end and p-start nodes, or root, start, end nodes were not chosen correctly")
+                    return 0
                 data2 = GUI2(branches, nodes_df)
             
                 if data2['continue']:
                     branch_names = data2['branch_names']
-                    branch_names_dict = {int(item.split(':')[0].strip()): item.split(':')[1].strip() for item in branch_names}
+                    # branch_names_dict = {int(item.split(':')[0].strip()): item.split(':')[1].strip() for item in branch_names}
+                    branch_names_dict = {}
+                    for item in branch_names:
+                        key_value = item.split(':')
+                        key = int(key_value[0].strip())
+                        value = key_value[1].strip()
+                        if value:  # Only add entries with non-empty values
+                            branch_names_dict[key] = value
                     branches['branch_name'] = [branch_names_dict.get(i,"") for i in range(len(branches))]
                     branches['project'] = [filename]*len(branches)
                     branch_remove_list = [int(i) for i in data2['branch_remove_list']]
                     branches.drop(labels = branch_remove_list, axis = 0, inplace = True)
+                    branches.reset_index(drop=True, inplace=True)
                     logging.info(f"{len(branch_remove_list)} branches dropped from df")
                     branches.to_excel(f"{os.path.join(savefolder, filename)}_branches.xlsx")
-                    logging.info(f"Done saving excel file for {filename}") 
+                    nodes_df.to_excel(f"{os.path.join(savefolder, filename)}_nodes.xlsx")
+                    logging.info(f"Done saving excel files for {filename}") 
                     _ = GUI3(branches, nodes_df, scaling, start_coords)
                     return 1 # This will end the current call of UserInputCycle and move onto the next image
                 else:
@@ -98,11 +114,3 @@ def Manual_processing(folderpath: str):
         run_files_queue.append(new_ind)
         run_files_queue.pop(0)
         
-
-    # for i in range(numfiles):
-    #     print(i)
-    #     filepath = files[i]
-    #     filename = filenames[i]
-        
-    #     if filename+".xlsx" not in os.listdir(savefolder): #if it hasn't already been processed
-    #         UserInputCycle(filepath, filename)
