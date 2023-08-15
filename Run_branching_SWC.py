@@ -4,24 +4,20 @@ import numpy as np
 from scipy.spatial import KDTree
 import networkx as nx
 from networkx.algorithms import minimum_spanning_tree
-from skimage import io
-import cv2 as cv
-import pandas as pd
-import json
-import os
 import logging
-from GUIs.Useful_functions import coords_to_id, find_parent, find_length
+
+from networkx.algorithms.tree import Tree
 
 def save_as_swc(mst, coords, filepath):
+    tree = Tree(mst) # Convert to a tree
+    root = tree.get_root() # Define root as needed
     with open(filepath, "w") as file:
         file.write("# index type x y z r parent\n")
-        for node in mst.nodes:
+        for node in nx.dfs_preorder_nodes(tree, source=root):
             x, y, z = coords[node]
-            parent = list(mst.predecessors(node))
-            if parent:
-                parent = parent[0]
-            else:
-                parent = -1
+            parent = list(tree.neighbors(node))
+            parent.remove(root) if root in parent else None
+            parent = parent[0] if parent else -1
             file.write(f"{node} 3 {x} {y} {z} 1.0 {parent}\n")
 
 def make_swc(coords : np.ndarray, 
@@ -86,10 +82,11 @@ def make_swc(coords : np.ndarray,
                     logging.info("Connected component")
     
     save_as_swc(mst, coords, "trialswc.swc")
+    print("saved")
     
     
 def Run_branching(results: dict, 
-                  filepath: str): # -> tuple[pd.DataFrame, pd.DataFrame]:
+                  branching_parameters): 
     
     #load useful stuff
     coords = results['coords']
@@ -97,7 +94,7 @@ def Run_branching(results: dict,
     start_coords = results['start_coords']
 
     #make minimum spanning tree and nodes df
-    tree = make_swc(coords, root_coords)
+    tree = make_swc(coords, root_coords, branching_parameters)
     logging.info("Done making swc file")
     
     
