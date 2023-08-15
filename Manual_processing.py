@@ -1,8 +1,7 @@
 import numpy as np
 import logging
 import os
-import pickle
-from Run_branching_SWC import Run_branching
+from Run_branching import Run_branching
 from GUIs.GUI1_choosepoints import GUI1
 from GUIs.GUI2_checkbranches import GUI2
 from GUIs.GUI3_measurements import GUI3
